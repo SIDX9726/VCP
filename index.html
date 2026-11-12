@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SEPA Quant Terminal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 font-mono p-6">
+    <div class="max-w-7xl mx-auto space-y-6">
+        <!-- Header & Token Updater -->
+        <div class="flex justify-between items-center bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-lg">
+            <h1 class="text-xl font-bold text-emerald-400">⚡ Minervini SEPA Live Terminal</h1>
+            <div class="flex gap-2">
+                <input type="text" id="tokenInput" placeholder="Enter Kite Access Token" class="bg-slate-950 border border-slate-700 px-3 py-1 rounded text-sm w-72 focus:outline-none focus:border-emerald-500 text-emerald-300">
+                <button onclick="updateToken()" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-1 rounded text-sm font-bold transition">Update Token</button>
+            </div>
+        </div>
+
+        <!-- Memory / History Log (Recommended Stocks History) -->
+        <div class="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-lg">
+            <h2 class="text-lg font-semibold mb-3 text-cyan-400">🧠 System Memory & Recommended Stocks History (Last 10 Days Performance)</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm text-slate-300">
+                    <thead class="bg-slate-800 text-slate-400 uppercase text-xs">
+                        <tr>
+                            <th class="p-3">Stock</th>
+                            <th class="p-3">Entry Date</th>
+                            <th class="p-3">Entry Price</th>
+                            <th class="p-3">Exit / Current Price</th>
+                            <th class="p-3">PnL %</th>
+                            <th class="p-3">Status / Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody" class="divide-y divide-slate-800">
+                        <tr><td colspan="6" class="p-4 text-center text-slate-500">Loading memory logs...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "https://your-aws-apprunner-url.awsapprunner.com"; // AWS URL yahan update karna
+
+        async function updateToken() {
+            const token = document.getElementById('tokenInput').value.trim();
+            if(!token) return alert("Token enter karo bhai!");
+            try {
+                let res = await fetch(`${API_URL}/api/update-token`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({access_token: token})
+                });
+                let data = await res.json();
+                alert(data.message);
+                document.getElementById('tokenInput').value = "";
+            } catch(e) {
+                alert("Error updating token: " + e);
+            }
+        }
+
+        async function loadHistory() {
+            try {
+                let res = await fetch(`${API_URL}/api/history`);
+                let data = await res.json();
+                let tbody = document.getElementById('historyTableBody');
+                if(!data || data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">No trading memory found yet.</td></tr>`;
+                    return;
+                }
+                tbody.innerHTML = "";
+                data.forEach(item => {
+                    let pnlColor = item.pnl_pct >= 0 ? 'text-emerald-400' : 'text-rose-400';
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-slate-800/50 transition">
+                            <td class="p-3 font-bold text-white">${item.sym}</td>
+                            <td class="p-3">${item.entry_date}</td>
+                            <td class="p-3">₹${item.entry_price}</td>
+                            <td class="p-3">₹${item.exit_price}</td>
+                            <td class="p-3 font-bold ${pnlColor}">${item.pnl_pct > 0 ? '+' : ''}${item.pnl_pct.toFixed(2)}%</td>
+                            <td class="p-3 text-xs">${item.reason}</td>
+                        </tr>
+                    `;
+                });
+            } catch(e) { console.error("Error loading history", e); }
+        }
+
+        loadHistory();
+        setInterval(loadHistory, 30000); // Refresh every 30 seconds
+    </script>
+</body>
+</html>
