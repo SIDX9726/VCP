@@ -5,3 +5,7 @@ numpy==1.26.4
 requests==2.31.0
 kiteconnect
 pydantic==2.6.4
+
+
+
+https://vcp-t2m6.onrender.com

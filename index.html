@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <title>SEPA Quant Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- TradingView Script -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 font-mono p-6">
     <div class="max-w-7xl mx-auto space-y-6">
@@ -39,8 +41,19 @@
         </div>
     </div>
 
+    <!-- TradingView Chart Modal (Zerodha Kite Style) -->
+    <div id="tv-modal" style="display:none;" class="fixed inset-0 bg-black/80 z-50 justify-center items-center p-6 backdrop-blur-sm">
+        <div class="bg-[#1e222d] w-full max-w-6xl h-[85vh] rounded-xl border border-slate-700 shadow-2xl flex flex-col p-4 relative">
+            <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-800">
+                <h3 id="modal-stock-title" class="text-lg font-bold text-emerald-400">TradingView Chart</h3>
+                <button onclick="closeTvModal()" class="text-slate-400 hover:text-white text-xl font-bold px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 transition">✕ Close</button>
+            </div>
+            <div id="tradingview_widget_container" class="w-full flex-1 rounded overflow-hidden"></div>
+        </div>
+    </div>
+
     <script>
-        const API_URL = "https://vcp-t2m6.onrender.com"; // AWS URL yahan update karna
+        const API_URL = "https://vcp-t2m6.onrender.com";
 
         async function updateToken() {
             const token = document.getElementById('tokenInput').value.trim();
@@ -72,8 +85,8 @@
                 data.forEach(item => {
                     let pnlColor = item.pnl_pct >= 0 ? 'text-emerald-400' : 'text-rose-400';
                     tbody.innerHTML += `
-                        <tr class="hover:bg-slate-800/50 transition">
-                            <td class="p-3 font-bold text-white">${item.sym}</td>
+                        <tr onclick="openTradingViewChart('${item.sym}')" class="hover:bg-slate-800/70 transition cursor-pointer group">
+                            <td class="p-3 font-bold text-white group-hover:text-emerald-400">${item.sym} 📈</td>
                             <td class="p-3">${item.entry_date}</td>
                             <td class="p-3">₹${item.entry_price}</td>
                             <td class="p-3">₹${item.exit_price}</td>
@@ -85,8 +98,36 @@
             } catch(e) { console.error("Error loading history", e); }
         }
 
+        function openTradingViewChart(symbol) {
+            const modal = document.getElementById('tv-modal');
+            modal.style.display = 'flex';
+            document.getElementById('modal-stock-titleinnerText').innerText = `${symbol} - Professional TradingView Chart`;
+            
+            document.getElementById('tradingview_widget_container').innerHTML = "";
+
+            new TradingView.widget({
+                "width": "100%",
+                "height": "100%",
+                "symbol": "NSE:" + symbol,
+                "interval": "D",
+                "timezone": "Asia/Kolkata",
+                "theme": "dark",
+                "style": "1",
+                "locale": "in",
+                "toolbar_bg": "#1e222d",
+                "enable_publishing": false,
+                "allow_symbol_change": true,
+                "container_id": "tradingview_widget_container"
+            });
+        }
+
+        function closeTvModal() {
+            document.getElementById('tv-modal').style.display = 'none';
+            document.getElementById('tradingview_widget_container').innerHTML = "";
+        }
+
         loadHistory();
-        setInterval(loadHistory, 30000); // Refresh every 30 seconds
+        setInterval(loadHistory, 30000);
     </script>
 </body>
 </html>
