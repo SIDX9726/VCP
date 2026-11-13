@@ -31,21 +31,27 @@ app.add_middleware(
 class TokenModel(BaseModel):
     access_token: str
 
-def save_history_record(trade_record):
-    history = []
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, "r") as f:
-                history = json.load(f)
-        except:
-            history = []
-    
-    exists = any(h.get('sym') == trade_record.get('sym') and h.get('entry_date') == trade_record.get('entry_date') for h in history)
-    if not exists:
-        history.insert(0, trade_record)
+def save_all_history_records(records):
+    """Saves the complete list of actual backtest closed & MTM trades to JSON"""
+    try:
+        # Sort or format records so newest are at the top
+        formatted_records = []
+        for r in records:
+            formatted_records.append({
+                "sym": r.get("sym"),
+                "entry_date": str(r.get("entry_date")),
+                "exit_date": str(r.get("exit_date")),
+                "entry_price": float(r.get("entry_price", 0)),
+                "exit_price": float(r.get("exit_price", 0)),
+                "pnl_pct": round(float(r.get("pnl_pct", 0)), 2),
+                "reason": str(r.get("reason", "Backtest Trade"))
+            })
+        
         with open(HISTORY_FILE, "w") as f:
-            json.dump(history[:100], f, indent=4)
-        print(f"💾 Saved record to history: {trade_record}")
+            json.dump(formatted_records[:100], f, indent=4)
+        print(f"💾 Successfully saved {len(formatted_records)} actual backtest trades to history!")
+    except Exception as e:
+        print(f"⚠️ Error saving history: {e}")
 
 @app.post("/api/update-token")
 def update_token(data: TokenModel):
@@ -67,7 +73,7 @@ def get_trade_history():
 def trigger_manual_scan():
     try:
         system = MasterSEPAEngine()
-        system.run_backtest_with_mtm_and_roi(num_sessions=5)
+        system.run_backtest_with_mtm_and_roi(num_sessions=15)
         return {"status": "success", "message": "Backtest & Scan completed successfully!"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -259,6 +265,7 @@ class MasterSEPAEngine:
 
         portfolio_positions = {}   
         post_exit_cooldown = {}    
+        closed_trades = []
 
         last_date_str = target_dates[-1]
 
@@ -301,12 +308,11 @@ class MasterSEPAEngine:
                     if drawdown_from_peak >= 0.04:
                         exit_price = curr_close
                         pnl_pct = current_gain_pct
-                        trade_rec = {
+                        closed_trades.append({
                             "sym": sym, "entry_date": pos["entry_date"], "exit_date": t_date, 
                             "entry_price": entry_price, "exit_price": exit_price, 
                             "pnl_pct": pnl_pct, "reason": f"Peak Drawdown Profit Lock (Peak: +{max_gain_pct:.1f}%) 🏆"
-                        }
-                        save_history_record(trade_rec)
+                        })
                         print(f"   🏆 PEAK LOCK EXIT: {sym} | PnL: {pnl_pct:+.2f}%")
                         post_exit_cooldown[sym] = 15
                         del portfolio_positions[sym]
@@ -317,23 +323,21 @@ class MasterSEPAEngine:
                     pos["stop_loss"] = entry_price * 1.03
                     stop_loss = pos["stop_loss"]
                     
-                    trade_rec = {
+                    closed_trades.append({
                         "sym": sym, "entry_date": pos["entry_date"], "exit_date": t_date, 
                         "entry_price": entry_price, "exit_price": entry_price * 1.15, 
                         "pnl_pct": 15.0, "reason": "Tier 1 Target Booked (50%) 🎯"
-                    }
-                    save_history_record(trade_rec)
+                    })
                     print(f"   🎯 TIER 1 (+15%): Booked 50% of {sym} @ ₹{entry_price * 1.15:.2f}")
                     tier1_hit = True
 
                 if tier1_hit and not tier2_hit and curr_high >= entry_price * 1.20:
                     pos["tier2_hit"] = True
-                    trade_rec = {
+                    closed_trades.append({
                         "sym": sym, "entry_date": pos["entry_date"], "exit_date": t_date, 
                         "entry_price": entry_price, "exit_price": entry_price * 1.20, 
                         "pnl_pct": 20.0, "reason": "Tier 2 Target Booked (25%) 🎯🎯"
-                    }
-                    save_history_record(trade_rec)
+                    })
                     print(f"   🎯🎯 TIER 2 (+20%): Booked next 25% of {sym} @ ₹{entry_price * 1.20:.2f}")
                     tier2_hit = True
 
@@ -350,12 +354,11 @@ class MasterSEPAEngine:
                     if rem_pnl_pct < 0:
                         post_exit_cooldown[sym] = 15
 
-                    trade_rec = {
+                    closed_trades.append({
                         "sym": sym, "entry_date": pos["entry_date"], "exit_date": t_date, 
                         "entry_price": entry_price, "exit_price": exit_price, 
                         "pnl_pct": rem_pnl_pct, "reason": reason
-                    }
-                    save_history_record(trade_rec)
+                    })
                     print(f"   ❌ FINAL EXIT: {sym} | PnL: {rem_pnl_pct:+.2f}% @ ₹{exit_price:.2f}")
                     del portfolio_positions[sym]
                     continue
@@ -364,12 +367,11 @@ class MasterSEPAEngine:
                 if pos["holding_days"] >= 15: 
                     exit_price = curr_close
                     rem_pnl_pct = ((exit_price - entry_price) / entry_price) * 100
-                    trade_rec = {
+                    closed_trades.append({
                         "sym": sym, "entry_date": pos["entry_date"], "exit_date": t_date, 
                         "entry_price": entry_price, "exit_price": exit_price, 
                         "pnl_pct": rem_pnl_pct, "reason": "Time Exit (Remaining) ⏱️"
-                    }
-                    save_history_record(trade_rec)
+                    })
                     print(f"   ⏱️ TIME EXIT: {sym} | PnL: {rem_pnl_pct:+.2f}%")
                     del portfolio_positions[sym]
                     continue
@@ -424,19 +426,33 @@ class MasterSEPAEngine:
                         "holding_days": 0
                     }
 
-                    trade_rec = {
-                        "sym": sym,
-                        "entry_date": f"{t_date} 09:30",
-                        "entry_price": float(realistic_entry_price),
-                        "exit_price": float(realistic_entry_price),
-                        "pnl_pct": 5.0,
-                        "reason": "Backtest SEPA Breakout Verified 🚀"
-                    }
-                    save_history_record(trade_rec)
-
                     signals_on_date += 1
                     print(f"   🚀 New Portfolio Entry: {sym} @ ₹{realistic_entry_price:.2f} | SL: ₹{initial_sl:.2f}")
                     time.sleep(0.35)
+
+        # MTM Evaluation for Open Positions
+        open_trades_mtm = []
+        if portfolio_positions:
+            for sym, pos in portfolio_positions.items():
+                info = self.stock_data[sym]
+                df_full = info['df']
+                last_row = df_full[df_full['date'].dt.strftime('%Y-%m-%d') == last_date_str]
+                if not last_row.empty:
+                    current_price = last_row['close'].values[0]
+                else:
+                    current_price = df_full.iloc[-1]['close']
+                
+                entry_price = pos["entry_price"]
+                mtm_pnl_pct = ((current_price - entry_price) / entry_price) * 100
+                open_trades_mtm.append({
+                    "sym": sym, "entry_date": pos["entry_date"], "exit_date": f"Open ({last_date_str})",
+                    "entry_price": entry_price, "exit_price": current_price,
+                    "pnl_pct": mtm_pnl_pct, "reason": "Open Position (MTM) 🔄"
+                })
+
+        # Combine all closed trades and open MTM trades and save to JSON
+        all_final_records = closed_trades + open_trades_mtm
+        save_all_history_records(all_final_records)
 
         print("==================================================")
         print("✅ Backtest & History Generation Completed Successfully!")
