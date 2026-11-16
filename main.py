@@ -34,7 +34,6 @@ class TokenModel(BaseModel):
 def save_all_history_records(records):
     """Saves the complete list of actual backtest closed & MTM trades to JSON"""
     try:
-        # Sort or format records so newest are at the top
         formatted_records = []
         for r in records:
             formatted_records.append({
@@ -457,16 +456,39 @@ class MasterSEPAEngine:
         print("==================================================")
         print("✅ Backtest & History Generation Completed Successfully!")
 
-# Background Engine Launcher on Startup
-def startup_engine():
+# Continuous Background Live Scanner Loop
+def background_scanner_loop():
+    print("🚀 [LIVE SCANNER] Background Engine Started...")
+    
+    # Initial boot run
     try:
-        print("🚀 [BACKGROUND ENGINE] Starting Initial Backtest + Live Scanner...")
         system = MasterSEPAEngine()
         system.run_backtest_with_mtm_and_roi(num_sessions=15)
     except Exception as e:
-        print(f"⚠️ Startup engine error: {e}")
+        print(f"⚠️ Initial boot scan error: {e}")
 
-threading.Thread(target=startup_engine, daemon=True).start()
+    # Market hours continuous loop
+    while True:
+        try:
+            now = datetime.now()
+            current_time = now.time()
+            is_weekday = now.weekday() < 5
+            
+            market_open = dtime(9, 15)
+            market_close = dtime(15, 30)
+
+            if is_weekday and (market_open <= current_time <= market_close):
+                print(f"🔄 [LIVE SCANNER] Market is OPEN. Running live check at {now.strftime('%H:%M:%S')}...")
+                system = MasterSEPAEngine()
+                system.run_backtest_with_mtm_and_roi(num_sessions=5)
+                time.sleep(600)  # Check every 10 minutes during market hours
+            else:
+                time.sleep(300)  # Check every 5 minutes outside market hours
+        except Exception as e:
+            print(f"⚠️ Live scanner loop error: {e}")
+            time.sleep(60)
+
+threading.Thread(target=background_scanner_loop, daemon=True).start()
 
 if __name__ == "__main__":
     import uvicorn
