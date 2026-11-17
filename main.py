@@ -14,7 +14,7 @@ from kiteconnect import KiteConnect
 
 # --- CONFIGURATION ---
 API_KEY = "pp8l4r5gh24lm9bk"
-ACCESS_TOKEN = "Pjm27VvsO8sNUp5JRyBriGJzeN79ulTV"
+ACCESS_TOKEN = "joS0CMtbWqFIjylnMU820dNSdvpiwV1q"
 HISTORY_FILE = "trade_history.json"
 TIMEFRAME = "day"
 
